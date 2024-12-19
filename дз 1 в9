@@ -1,0 +1,176 @@
+\\\\\\\\\\\\\\Основной код эмулятора
+import os
+import tarfile
+import argparse
+import logging
+import xml.etree.ElementTree as ET
+
+class ShellEmulator:
+    def __init__(self, username, vfs_path, log_file, startup_script):
+        self.username = username
+        self.vfs_path = vfs_path
+        self.log_file = log_file
+        self.startup_script = startup_script
+        self.current_path = '/'
+        self.vfs = self.load_vfs()
+        self.commands = {
+            'ls': self.ls,
+            'cd': self.cd,
+            'exit': self.exit,
+            'chown': self.chown,
+            'mkdir': self.mkdir,
+            'chmod': self.chmod,
+        }
+        self.setup_logging()
+
+    def setup_logging(self):
+        logging.basicConfig(filename=self.log_file, level=logging.INFO)
+        logging.info(f"Session started for user: {self.username}")
+
+    def load_vfs(self):
+        # Load the virtual file system from the tar file
+        with tarfile.open(self.vfs_path, 'r') as tar:
+            return {member.name: member for member in tar.getmembers()}
+
+    def run(self):
+        if self.startup_script:
+            self.execute_script(self.startup_script)
+        while True:
+            command = input(f"{self.username}@shell:{self.current_path}$ ")
+            self.execute_command(command)
+
+    def execute_command(self, command):
+        parts = command.split()
+        cmd = parts[0]
+        args = parts[1:]
+
+        if cmd in self.commands:
+            self.commands[cmd](*args)
+        else:
+            print(f"{cmd}: command not found")
+
+    def execute_script(self, script_path):
+        with open(script_path, 'r') as script:
+            for line in script:
+                self.execute_command(line.strip())
+
+    def ls(self):
+        print("Listing files and directories:")
+        for name in self.vfs.keys():
+            print(name)
+        self.log_action("ls")
+
+    def cd(self, path):
+        if path in self.vfs:
+            self.current_path = path
+            logging.info(f"User  {self.username} changed directory to {path}")
+            self.log_action(f"cd {path}")
+        else:
+            print(f"{path}: No such file or directory")
+
+    def exit(self):
+        logging.info("Session ended.")
+        print("Exiting shell.")
+        exit()
+
+    def chown(self, owner, path):
+        # Simulate changing owner
+        print(f"Changing owner of {path} to {owner}...")
+        self.log_action(f"chown {owner} {path}")
+
+    def mkdir(self, dir_name):
+        # Simulate creating a directory
+        print(f"Creating directory {dir_name}...")
+        self.log_action(f"mkdir {dir_name}")
+
+    def chmod(self, permissions, path):
+        # Simulate changing permissions
+        print(f"Changing permissions of {path} to {permissions}...")
+        self.log_action(f"chmod {permissions} {path}")
+
+    def log_action(self, action):
+        logging.info(f"User  {self.username} executed: {action}")
+        self.write_log_to_xml(action)
+
+    def write_log_to_xml(self, action):
+        root = ET.Element("session")
+        action_element = ET.SubElement(root, "action")
+        action_element.text = action
+        action_element.set("user", self.username)
+
+        tree = ET.ElementTree(root)
+        with open(self.log_file, 'wb') as log_file:
+            tree.write(log_file)
+
+def main():
+    parser = argparse.ArgumentParser(description="Shell Emulator")
+    parser.add_argument('username', type=str, help="Username for the shell")
+    parser.add_argument('vfs_path', type=str, help="Path to the virtual file system tar file")
+    parser.add_argument('log_file', type=str, help="Path to the log file")
+    parser.add_argument('startup_script', type=str, help="Path to the startup script")
+    
+    args = parser.parse_args()
+    
+    emulator = ShellEmulator(args.username, args.vfs_path, args.log_file, args.startup_script)
+    emulator.run()
+
+if __name__ == "__main__":
+    main()
+\\\\\\\\\\\\\\\\\\Тестирование с использованием unittest
+import unittest
+from unittest.mock import patch, MagicMock, mock_open
+import logging
+import os
+
+class TestShellEmulator(unittest.TestCase):
+    def setUp(self):
+        self.emulator = ShellEmulator("testuser", "test.tar", "log.xml", "startup.sh")
+        self.emulator.vfs = {'dir1': None, 'dir2': None, 'file.txt': None}
+
+    @patch('builtins.print')
+    def test_ls(self, mock_print):
+        self.emulator.ls()
+        mock_print.assert_called_with("Listing files and directories:")
+
+    @patch('builtins.print')
+    def test_cd_valid(self, mock_print):
+        self.emulator.cd("dir1")
+        self.assertEqual(self.emulator.current_path, "dir1")
+        self.assertIn("User  testuser changed directory to dir1", self.get_log_contents())
+
+    @patch('builtins.print')
+    def test_cd_invalid(self, mock_print):
+        self.emulator.cd("invalid_dir")
+        mock_print.assert_called_with("invalid_dir: No such file or directory")
+
+    @patch('builtins.print')
+    def test_exit(self, mock_print):
+        with self.assertRaises(SystemExit):
+            self.emulator.exit()
+        mock_print.assert_called_with("Exiting shell.")
+
+    @patch('builtins.print')
+    def test_chown(self, mock_print):
+        self.emulator.chown("new_owner", "file.txt")
+        mock_print.assert_called_with("Changing owner of file.txt to new_owner...")
+        self.assertIn("User  testuser executed: chown new_owner file.txt", self.get_log_contents())
+
+    @patch('builtins.print')
+    def test_mkdir(self, mock_print):
+        self.emulator.mkdir("new_dir")
+        mock_print.assert_called_with("Creating directory new_dir...")
+        self.assertIn("User  testuser executed: mkdir new_dir", self.get_log_contents())
+
+    @patch('builtins.print')
+    def test_chmod(self, mock_print):
+        self.emulator.chmod("755", "file.txt")
+        mock_print.assert_called_with("Changing permissions of file.txt to 755...")
+        self.assertIn("User  testuser executed: chmod 755 file.txt", self.get_log_contents())
+
+    def get_log_contents(self):
+        with open("log.xml", 'r') as f:
+            return f.read()
+
+if __name__ == '__main__':
+    unittest.main()
+
