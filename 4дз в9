@@ -1,0 +1,161 @@
+\\\\\\\\\\\\\Ассемблер
+Ассемблер будет читать текстовый файл с командами,
+разбивать их на инструкции и преобразовывать их в бинарный формат.
+
+import struct
+import json
+import sys
+
+class Assembler:
+    def __init__(self, input_file, output_file, log_file):
+        self.input_file = input_file
+        self.output_file = output_file
+        self.log_file = log_file
+        self.instructions = []
+
+    def assemble(self):
+        with open(self.input_file, 'r') as f:
+            for line in f:
+                self.process_line(line.strip())
+        
+        self.write_binary_file()
+        self.write_log_file()
+
+    def process_line(self, line):
+        parts = line.split()
+        command = parts[0]
+        if command == 'LOAD_CONST':
+            a = int(parts[1])
+            b = int(parts[2])
+            self.instructions.append(self.load_const(a, b))
+        elif command == 'READ':
+            a = int(parts[1])
+            b = int(parts[2])
+            self.instructions.append(self.read(a, b))
+        elif command == 'WRITE':
+            a = int(parts[1])
+            b = int(parts[2])
+            self.instructions.append(self.write(a, b))
+        elif command == 'SHIFT_LEFT':
+            a = int(parts[1])
+            b = int(parts[2])
+            self.instructions.append(self.shift_left(a, b))
+
+    def load_const(self, a, b):
+        return struct.pack('B I', a, b)
+
+    def read(self, a, b):
+        return struct.pack('B I', a, b)
+
+    def write(self, a, b):
+        return struct.pack('B I', a, b)
+
+    def shift_left(self, a, b):
+        return struct.pack('B I', a, b)
+
+    def write_binary_file(self):
+        with open(self.output_file, 'wb') as f:
+            for instruction in self.instructions:
+                f.write(instruction)
+
+    def write_log_file(self):
+        log_data = {f'Instruction {i}': instruction.hex() for i, instruction in enumerate(self.instructions)}
+        with open(self.log_file, 'w') as f:
+            json.dump(log_data, f, indent=4)
+
+def main():
+    if len(sys.argv) != 4:
+        print("Usage: python assembler.py <input_file> <output_file> <log_file>")
+        return
+    
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
+    log_file = sys.argv[3]
+
+    assembler = Assembler(input_file, output_file, log_file)
+    assembler.assemble()
+
+if __name__ == "__main__":
+    main()
+
+\\\\\\\\\\\ Интерпретатор
+Интерпретатор будет выполнять бинарные команды и сохранять
+результаты в диапазоне памяти в формате JSON.
+
+class Interpreter:
+    def __init__(self, binary_file, memory_range):
+        self.binary_file = binary_file
+        self.memory = [0] * 1024  # Пример размера памяти
+        self.accumulator = 0
+        self.memory_range = memory_range
+
+    def run(self):
+        with open(self.binary_file, 'rb') as f:
+            while True:
+                instruction = f.read(5)
+                if not instruction:
+                    break
+                self.execute_instruction(instruction)
+
+        self.save_results()
+
+    def execute_instruction(self, instruction):
+        a = instruction[0]
+        b = struct.unpack('I', instruction[1:])[0]
+        
+        if a == 40:  # LOAD_CONST
+            self.accumulator = b
+        elif a == 84:  # READ
+            self.accumulator = self.memory[b]
+        elif a == 63:  # WRITE
+            self.memory[b] = self.accumulator
+        elif a == 97:  # SHIFT_LEFT
+            self.accumulator = (self.accumulator << 1) | (self.memory[b] >> 31)
+
+    def save_results(self):
+        results = {f'Memory[{i}]': self.memory[i] for i in range(self.memory_range)}
+        with open('results.json', 'w') as f:
+            json.dump(results, f, indent=4)
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: python interpreter.py <binary_file> <memory_range>")
+        return
+    
+    binary_file = sys.argv[1]
+    memory_range = int(sys.argv[2])
+
+    interpreter = Interpreter(binary_file, memory_range)
+    interpreter.run()
+
+if __name__ == "__main__":
+    main()
+
+\\\\\\\\\\\\Тестовая программа
+Создадим тестовую программу, которая выполняет операции побитового 
+циклического сдвига влево над двумя векторами длины 7.
+
+# test_program.txt
+LOAD_CONST 40 999
+WRITE 63 0
+LOAD_CONST 40 123
+WRITE 63 1
+LOAD_CONST 40 456
+WRITE 63 2
+LOAD_CONST 40 789
+WRITE 63 3
+LOAD_CONST 40 101
+WRITE 63 4
+LOAD_CONST 40 202
+WRITE 63 5
+LOAD_CONST 40 303
+WRITE 63 6
+LOAD_CONST 97 63
+SHIFT_LEFT 97 0
+WRITE 63 0
+
+\\\\\\\\\\\\Сначала соберите программу с помощью ассемблера:
+python assembler.py test_program.txt output.bin log.json
+\\\\\\\\\\\\\\Затем выполните интерпретатор:
+python interpreter.py output.bin 7
+Результаты будут сохранены в results.json.
