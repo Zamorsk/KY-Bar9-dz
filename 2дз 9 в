@@ -1,0 +1,142 @@
+\\\\\\\\Пример конфигурационного файла (config.json)
+{
+    "plantuml_path": "java -jar /path/to/plantuml.jar",
+    "repo_path": "/path/to/git/repo",
+    "output_image_path": "dependencies_graph.png"
+}
+
+
+\\\\\\\\Основной код визуализатора зависимостей
+import os
+import json
+import subprocess
+import hashlib
+import git
+import argparse
+
+class DependencyVisualizer:
+    def __init__(self, config_path):
+        self.config = self.load_config(config_path)
+        self.repo_path = self.config['repo_path']
+        self.plantuml_path = self.config['plantuml_path']
+        self.output_image_path = self.config['output_image_path']
+        self.repo = self.load_repo()
+
+    def load_config(self, config_path):
+        with open(config_path, 'r') as f:
+            return json.load(f)
+
+    def load_repo(self):
+        return git.Repo(self.repo_path)
+
+    def get_commits(self):
+        return list(self.repo.iter_commits())
+
+    def generate_dependency_graph(self):
+        commits = self.get_commits()
+        plantuml_code = "@startuml\n"
+        
+        for commit in commits:
+            commit_hash = commit.hexsha
+            plantuml_code += f'"{commit_hash}"\n'
+            parents = commit.parents
+            
+            for parent in parents:
+                plantuml_code += f'"{parent.hexsha}" --> "{commit_hash}"\n'
+        
+        plantuml_code += "@enduml"
+        return plantuml_code
+
+    def save_plantuml_file(self, plantuml_code, temp_file='temp.puml'):
+        with open(temp_file, 'w') as f:
+            f.write(plantuml_code)
+        return temp_file
+
+    def generate_graph_image(self, plantuml_file):
+        subprocess.run(f"{self.plantuml_path} {plantuml_file}", shell=True, check=True)
+
+    def visualize(self):
+        plantuml_code = self.generate_dependency_graph()
+        temp_file = self.save_plantuml_file(plantuml_code)
+        self.generate_graph_image(temp_file)
+        os.remove(temp_file)  # Clean up the temporary file
+        print(f"Graph saved to {self.output_image_path}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Dependency Visualizer")
+    parser.add_argument('config', type=str, help="Path to the config JSON file")
+    args = parser.parse_args()
+
+    visualizer = DependencyVisualizer(args.config)
+    visualizer.visualize()
+
+if __name__ == "__main__":
+    main()
+
+
+\\\\\\\\\Тестирование с использованием unittest
+import unittest
+from unittest.mock import patch, MagicMock
+import json
+import os
+
+class TestDependencyVisualizer(unittest.TestCase):
+    def setUp(self):
+        self.config = {
+            "plantuml_path": "java -jar /path/to/plantuml.jar",
+            "repo_path": "/path/to/git/repo",
+            "output_image_path": "dependencies_graph.png"
+        }
+        with open('test_config.json', 'w') as f:
+            json.dump(self.config, f)
+
+        self.visualizer = DependencyVisualizer('test_config.json')
+
+    def tearDown(self):
+        os.remove('test_config.json')
+
+    @patch('git.Repo')
+    def test_load_repo(self, mock_repo):
+        repo_instance = self.visualizer.load_repo()
+        self.assertIsNotNone(repo_instance)
+
+    @patch('git.Repo.iter_commits')
+    def test_get_commits(self, mock_iter_commits):
+        mock_iter_commits.return_value = [MagicMock(hexsha='123456'), MagicMock(hexsha='789abc')]
+        commits = self.visualizer.get_commits()
+        self.assertEqual(len(commits), 2)
+
+    def test_generate_dependency_graph(self):
+        # Mocking the commit data
+        self.visualizer.repo.iter_commits = MagicMock(return_value=[
+            MagicMock(hexsha='123456', parents=[MagicMock(hexsha='654321')]),
+            MagicMock(hexsha='789abc', parents=[MagicMock(hexsha='cba987'), MagicMock(hexsha='fedcba')])
+        ])
+        graph = self.visualizer.generate_dependency_graph()
+        expected_graph = "@startuml\n" \
+                         '"123456"\n' \
+                         '"654321" --> "123456"\n' \
+                         '"789abc"\n' \
+                         '"cba987" --> "789abc"\n' \
+                         '"fedcba" --> "789abc"\n' \
+                         "@enduml"
+        self.assertEqual(graph, expected_graph)
+
+    @patch('subprocess.run')
+    def test_generate_graph_image(self, mock_run):
+        self.visualizer.generate_graph_image('temp.puml')
+        mock_run.assert_called_once()
+
+    @patch('builtins.print')
+    def test_visualize(self, mock_print):
+        with patch('os.remove') as mock_remove:
+            self.visualizer.visualize()
+            mock_print.assert_called_with(f"Graph saved to {self.config['output_image_path']}")
+
+if __name__ == '__main__':
+    unittest.main()
+\\\\\\\\\\Запуск тестов
+Для запуска тестов, сохраните код тестов в файл, например,
+test_dependency_visualizer.py, и выполните следующую команду в терминале:
+
+python -m unittest test_dependency_visualizer.py
