@@ -1,0 +1,189 @@
+\\\\\\\Основной код преобразователя
+import sys
+import xml.etree.ElementTree as ET
+import re
+
+class ConfigLanguageConverter:
+    def __init__(self):
+        self.constants = {}
+
+    def parse_xml(self, xml_input):
+        try:
+            root = ET.fromstring(xml_input)
+            return self.process_element(root)
+        except ET.ParseError as e:
+            raise ValueError(f"XML Parsing Error: {e}")
+
+    def process_element(self, element):
+        if element.tag == 'comment':
+            return self.process_comment(element.text)
+        elif element.tag == 'array':
+            return self.process_array(element)
+        elif element.tag == 'dictionary':
+            return self.process_dictionary(element)
+        elif element.tag == 'constant':
+            return self.process_constant(element)
+        elif element.tag == 'expression':
+            return self.process_expression(element)
+        else:
+            raise ValueError(f"Unknown element: {element.tag}")
+
+    def process_comment(self, text):
+        if text.startswith('>'):
+            return f"*> {text[1:].strip()}"
+        return ""
+
+    def process_array(self, element):
+        values = [self.process_element(child) for child in element]
+        return f"'({ ' '.join(values) })"
+
+    def process_dictionary(self, element):
+        items = []
+        for child in element:
+            if child.tag == 'item':
+                name = child.find('name').text
+                value = self.process_element(child.find('value'))
+                items.append(f"{name} = {value}")
+            else:
+                raise ValueError(f"Unknown dictionary item: {child.tag}")
+        return f"table([{', '.join(items)}])"
+
+    def process_constant(self, element):
+        name = element.find('name').text
+        value = self.process_element(element.find('value'))
+        self.constants[name] = value
+        return f"def {name} := {value}"
+
+    def process_expression(self, element):
+        expression = element.text.strip()
+        return self.evaluate_expression(expression)
+
+    def evaluate_expression(self, expression):
+        # Simple evaluation for demonstration purposes
+        # This should be replaced with a proper parser for complex expressions
+        try:
+            # Replace constant names with their values
+            for name, value in self.constants.items():
+                expression = expression.replace(name, str(value))
+            return str(eval(expression))
+        except Exception as e:
+            raise ValueError(f"Expression evaluation error: {e}")
+
+    def convert(self, xml_input):
+        return self.parse_xml(xml_input)
+
+def main():
+    xml_input = sys.stdin.read()
+    converter = ConfigLanguageConverter()
+    try:
+        result = converter.convert(xml_input)
+        print(result)
+    except ValueError as e:
+        print(e)
+
+if __name__ == "__main__":
+    main()
+
+
+\\\\\\\\\\Примеры XML для конфигураций
+Пример 1: Конфигурация для веб-сервера
+<configuration>
+    <comment> Настройки веб-сервера </comment>
+    <constant>
+        <name>port</name>
+        <value>8080</value>
+    </constant>
+    <constant>
+        <name>host</name>
+        <value>"localhost"</value>
+    </constant>
+    <dictionary>
+        <item>
+            <name>server</name>
+            <value>table([host = ${host}, port = ${port}])</value>
+        </item>
+    </dictionary>
+</configuration>
+
+
+Пример 2: Конфигурация для базы данных
+<configuration>
+    <comment> Настройки базы данных </comment>
+    <constant>
+        <name>db_name</name>
+        <value>"my_database"</value>
+    </constant>
+    <constant>
+        <name>user</name>
+        <value>"admin"</value>
+    </constant>
+    <constant>
+        <name>password</name>
+        <value>"secret"</value>
+    </constant>
+    <dictionary>
+        <item>
+            <name>database</name>
+            <value>table([name = ${db_name}, user = ${user}, password = ${password}])</value>
+        </item>
+    </dictionary>
+</configuration>
+
+
+\\\\\\\\\Тестирование
+import unittest
+
+class TestConfigLanguageConverter(unittest.TestCase):
+    def setUp(self):
+        self.converter = ConfigLanguageConverter()
+
+    def test_process_comment(self):
+        result = self.converter.process_comment("> Это однострочный комментарий")
+        self.assertEqual(result, "*> Это однострочный комментарий")
+
+    def test_process_array(self):
+        xml_array = "<array><value>1</value><value>2</value><value>3</value></array>"
+        result = self.converter.process_array(ET.fromstring(xml_array))
+        self.assertEqual(result, "'(1 2 3)")
+
+    def test_process_dictionary(self):
+        xml_dict = """
+        <dictionary>
+            <item>
+                <name>key1</name>
+                <value>value1</value>
+            </item>
+            <item>
+                <name>key2</name>
+                <value>value2</value>
+            </item>
+        </dictionary>
+        """
+        result = self.converter.process_dictionary(ET.fromstring(xml_dict))
+        self.assertEqual(result, "table([key1 = value1, key2 = value2])")
+
+    def test_process_constant(self):
+        xml_constant = """
+        <constant>
+            <name>const1</name>
+            <value>42</value>
+        </constant>
+        """
+        result = self.converter.process_constant(ET.fromstring(xml_constant))
+        self.assertEqual(result, "def const1 := 42")
+        self.assertEqual(self.converter.constants['const1'], '42')
+
+    def test_process_expression(self):
+        xml_expression = "<expression>${const1 + 1}</expression>"
+        self.converter.constants['const1'] = '42'
+        result = self.converter.process_expression(ET.fromstring(xml_expression))
+        self.assertEqual(result, '43')
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+\\\\\\\\\\\\\Запуск тестов
+Для запуска тестов, сохраните код тестов в файл, например, test_config_language_converter.py, и выполните следующую команду в терминале:
+
+python -m unittest test_config_language_converter.py
