@@ -174,3 +174,8 @@ class TestShellEmulator(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
 
+\\\\\\\\\\\Запуск тестов
+Для запуска тестов, сохраните код тестов в файл, например, test_shell_emulator.py,
+и выполните следующую команду в терминале:
+
+python -m unittest test_shell_emulator.py
